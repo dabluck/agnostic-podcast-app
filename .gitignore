@@ -1,0 +1,24 @@
+# Your personal app exports (bring your own — never committed)
+pocketcasts
+pocketcasts-shm
+pocketcasts-wal
+castro.castrobackup
+castro_cache/
+
+# Your own feed/link mappings (copy the *.example.json templates to these)
+feed_urls.json
+manual_links.json
+public_counterparts.json
+feed_replacements.json
+
+# Rebuildable feed cache (public RSS responses)
+feed_cache/
+
+# Generated artifacts
+library.sqlite
+library.sqlite-shm
+library.sqlite-wal
+app/
+__pycache__/
+*.pyc
+.DS_Store

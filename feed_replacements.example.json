@@ -1,0 +1,7 @@
+[
+  {
+    "existing_url": "https://old-host.example.com/feed.xml",
+    "replacement_url": "https://new-host.example.com/feed",
+    "note": "Show moved hosts (verified by episode overlap)"
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "variant_url": "https://example.com/members/some-show.rss",
+    "primary_url": "https://example.com/feed/some-show.xml",
+    "match": "exact",
+    "note": "member feed of Some Show == its public feed (owner ruling)"
+  }
+]
