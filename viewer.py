@@ -246,6 +246,12 @@ nav.links a:hover { color: var(--fg); }
 .hero .es { color: rgba(255,255,255,.72); font-size: 11.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Art eases in on load instead of snapping. The tile keeps its surface colour
+   underneath, so what you see is a fill resolving into a cover, not a flash. */
+img.ph { opacity: 0; transition: opacity .3s ease; }
+img.ph.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { img.ph { transition: none; opacity: 1; } }
+
 .letter { width: 100%; height: 100%; display: flex; align-items: center;
   justify-content: center; font-size: 44px; font-weight: 700; }
 .lock { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,.55);
@@ -402,10 +408,26 @@ function imgFail(img) {
   else if (img.classList.contains("epthumb")) { img.style.visibility = "hidden"; }
   else { img.outerHTML = letterTile(img.dataset.t || "?"); }
 }
-function imgTag(src, fb, title, cls) {
-  return '<img loading="lazy"' + (cls ? ' class="' + cls + '"' : "") +
-    ' src="' + esc(src) + '" alt=""' + (fb ? ' data-fb="' + esc(fb) + '"' : "") +
-    ' data-t="' + esc(title).replace(/"/g, "&quot;") + '" onerror="imgFail(this)">';
+// Remote art goes through serve.py's on-disk cache, so scrolling doesn't re-hit
+// podcast CDNs. From file:// there's no server, so use the raw URL.
+const proxied = location.protocol.startsWith("http");
+const mediaSrc = u => (u && proxied && u.startsWith("http"))
+  ? "/artcache?u=" + encodeURIComponent(u) : u;
+// Images fade in on load rather than snapping. An image that is already decoded
+// (cached, or re-rendered from another view) fires no load event, so mark those
+// ready up front — otherwise they'd sit invisible forever.
+function imgTag(src, fb, title, cls, eager) {
+  return '<img ' + (eager ? 'loading="eager"' : 'loading="lazy"') + ' decoding="async"' +
+    ' class="ph' + (cls ? " " + cls : "") + '"' +
+    ' src="' + esc(mediaSrc(src)) + '" alt=""' +
+    (fb ? ' data-fb="' + esc(mediaSrc(fb)) + '"' : "") +
+    ' data-t="' + esc(title).replace(/"/g, "&quot;") +
+    '" onload="this.classList.add(\\'on\\')" onerror="imgFail(this)">';
+}
+function settleImages(root) {
+  for (const img of (root || document).querySelectorAll("img.ph")) {
+    if (img.complete && img.naturalWidth) img.classList.add("on");
+  }
 }
 function epArt(e) {
   const cover = famArt.get(e[0]);
@@ -516,12 +538,16 @@ function homeBlock() {
 }
 
 const byEid = new Map(E.map(e => [e[8], e]));
-function heroTile(eid) {
+// The mosaic loads eagerly. Lazy-loading only pays when each image is a slow
+// remote fetch; served warm and downscaled from serve.py's cache they arrive
+// faster than you can scroll, and deferring them is precisely what makes tiles
+// pop in. The episode TABLE keeps lazy thumbs — that list runs to thousands.
+function heroTile(eid, i) {
   const e = byEid.get(eid);
   if (!e) return "";
   const show = famTitle.get(e[0]) || "";
   const [src, fb] = epArt(e);
-  const inner = src ? imgTag(src, fb, show) : letterTile(show);
+  const inner = src ? imgTag(src, fb, show, "", true) : letterTile(show);
   return '<a class="hero" href="#/p/' + e[0] + '">' + inner +
     '<div class="ov"><div class="et">' + esc(e[1]) + "</div>" +
     '<div class="es">' + esc(show) + " \\u00B7 " + fmtAgo(e[5]) + "</div></div></a>";
@@ -712,6 +738,7 @@ function wireEpisodeControls() {
 
 function postRender(view, main) {
   applyTheme(theme);
+  settleImages(main);
   const b = document.getElementById("themebtn");
   if (b) b.onclick = () => {
     theme = THEMES[(THEMES.indexOf(theme) + 1) % 3];
@@ -725,8 +752,10 @@ function postRender(view, main) {
     if (btn) btn.onclick = () => {   // append a page in place; no scroll jump
       const total = evenDown(D.recent.length);
       const next = Math.min(state.rshown + RECENT_PAGE, total);
+      const from = state.rshown;   // keep the real index: appended tiles are never eager
       document.getElementById("mosaic").insertAdjacentHTML(
-        "beforeend", D.recent.slice(state.rshown, next).map(heroTile).join(""));
+        "beforeend", D.recent.slice(from, next).map((id, k) => heroTile(id, from + k)).join(""));
+      settleImages();
       state.rshown = next;
       if (next >= total) btn.remove();
       else btn.textContent = "Show more \\u00B7 " + (total - next).toLocaleString() + " older";
