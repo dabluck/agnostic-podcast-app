@@ -19,8 +19,7 @@ Rules applied here, in order:
      "Bonus …", "Members", "Archives", "Ad-Free", "Premium", "Plus") joins
      that family IF it is private OR shares >= 2 content signatures
      (normalized title+date, or enclosure core) with the family.
-  3. <podcast:guid> equality always links. (Inert until something populates
-     podcasts.podcast_guid — no shipped ingester does yet; it's an enrichment hook.)
+  3. <podcast:guid> equality always links (populated by resolve_guids.py).
 Primary selection: public row with the most canonical episodes; if the whole
 family is private, the private row with the most episodes.
 """

@@ -15,7 +15,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS podcasts (
     id                INTEGER PRIMARY KEY,
     feed_url          TEXT UNIQUE,         -- best current feed URL (see podcast_feed_urls for all)
-    podcast_guid      TEXT,                -- <podcast:guid>; enrichment hook, no shipped ingester sets it yet
+    podcast_guid      TEXT,                -- <podcast:guid> from the feed channel, set by resolve_guids.py
     title             TEXT NOT NULL,
     author            TEXT,
     website_url       TEXT,

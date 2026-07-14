@@ -9,7 +9,9 @@ For every podcast owning guid-less episodes, fetch its feed(s) (cached forever
 in feed_cache/feed_{sha16}.xml), then match each guid-less episode with the
 standard cascade: enclosure core -> normalized title + publish date -> unique
 normalized title. Matched episodes get their guid (and duration/published_at
-when missing) from the feed item.
+when missing) from the feed item. It also captures the feed's channel-level
+<podcast:guid> into podcasts.podcast_guid, which link_feed_variants.py uses to
+link feed families.
 
 This only ever fetches the public RSS feed URLs already stored in
 podcast_feed_urls; there is no app API involved.
@@ -33,6 +35,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 CACHE = HERE / "feed_cache"
 UA = "agnostic-podcast-app/1.0 (+guid resolver)"
+PODCAST_NS = "{https://podcastindex.org/namespace/1.0}"  # <podcast:guid>
 
 from identity import core_url, dur_to_sec, norm_title as norm
 
@@ -53,10 +56,11 @@ def fetch_feed(url):
         root = ET.fromstring(txt)
     except Exception:
         return None
-    items = []
     ch = root.find("channel")
     if ch is None:
         return None
+    podcast_guid = (ch.findtext(PODCAST_NS + "guid") or "").strip() or None
+    items = []
     for it in ch.iter("item"):
         enc = it.find("enclosure")
         dur = it.findtext("{http://www.itunes.com/dtds/podcast-1.0.dtd}duration")
@@ -72,7 +76,7 @@ def fetch_feed(url):
             "title": norm(it.findtext("title")),
             "date": date, "published": iso, "dur": dur,
         })
-    return items
+    return {"podcast_guid": podcast_guid, "items": items}
 
 
 def main():
@@ -91,20 +95,25 @@ def main():
 
     def job(pid):
         for u in urls.get(pid, []):
-            items = fetch_feed(u)
-            if items:
-                return pid, items
+            feed = fetch_feed(u)
+            if feed:
+                return pid, feed
         return pid, None
 
     with ThreadPoolExecutor(12) as ex:
-        feed_items = dict(ex.map(job, targets))
+        feeds = dict(ex.map(job, targets))
 
-    n_guid = n_conflict = n_nofeed = n_nomatch = n_meta = 0
+    n_guid = n_conflict = n_nofeed = n_nomatch = n_meta = n_pguid = 0
     for pid, eps in targets.items():
-        items = feed_items.get(pid)
-        if not items:
+        feed = feeds.get(pid)
+        if not feed:
             n_nofeed += len(eps)
             continue
+        if feed["podcast_guid"]:
+            n_pguid += db.execute(
+                "UPDATE podcasts SET podcast_guid=? WHERE id=? AND podcast_guid IS NULL",
+                (feed["podcast_guid"], pid)).rowcount
+        items = feed["items"]
         by_core, by_td, by_title = {}, {}, {}
         for it in items:
             if it["core"]:
@@ -136,8 +145,9 @@ def main():
                            (dur_to_sec(it["dur"]), e["id"]))
                 n_meta += 1
     db.commit()
-    print(f"guids backfilled: {n_guid}; conflicts left for dedupe: {n_conflict}; "
-          f"no feed: {n_nofeed}; no match in feed: {n_nomatch}; durations added: {n_meta}")
+    print(f"guids backfilled: {n_guid}; podcast_guids set: {n_pguid}; "
+          f"conflicts left for dedupe: {n_conflict}; no feed: {n_nofeed}; "
+          f"no match in feed: {n_nomatch}; durations added: {n_meta}")
 
 
 if __name__ == "__main__":
