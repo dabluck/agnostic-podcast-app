@@ -410,17 +410,21 @@ function imgFail(img) {
 }
 // Remote art goes through serve.py's on-disk cache, so scrolling doesn't re-hit
 // podcast CDNs. From file:// there's no server, so use the raw URL.
+// Ask for each image at the size it is drawn at (2x for retina). Serving one big
+// size for every slot is what still stutters on a fast scroll: a 640px image in a
+// 190px tile costs ~4x the bytes and decode it needs, times 150 tiles.
+const THUMB = 96, TILE = 384, HERO = 768;
 const proxied = location.protocol.startsWith("http");
-const mediaSrc = u => (u && proxied && u.startsWith("http"))
-  ? "/artcache?u=" + encodeURIComponent(u) : u;
+const mediaSrc = (u, w) => (u && proxied && u.startsWith("http"))
+  ? "/artcache?u=" + encodeURIComponent(u) + "&w=" + (w || TILE) : u;
 // Images fade in on load rather than snapping. An image that is already decoded
 // (cached, or re-rendered from another view) fires no load event, so mark those
 // ready up front — otherwise they'd sit invisible forever.
-function imgTag(src, fb, title, cls, eager) {
+function imgTag(src, fb, title, cls, eager, w) {
   return '<img ' + (eager ? 'loading="eager"' : 'loading="lazy"') + ' decoding="async"' +
     ' class="ph' + (cls ? " " + cls : "") + '"' +
-    ' src="' + esc(mediaSrc(src)) + '" alt=""' +
-    (fb ? ' data-fb="' + esc(mediaSrc(fb)) + '"' : "") +
+    ' src="' + esc(mediaSrc(src, w)) + '" alt=""' +
+    (fb ? ' data-fb="' + esc(mediaSrc(fb, w)) + '"' : "") +
     ' data-t="' + esc(title).replace(/"/g, "&quot;") +
     '" onload="this.classList.add(\\'on\\')" onerror="imgFail(this)">';
 }
@@ -435,10 +439,12 @@ function epArt(e) {
 }
 function epThumb(e) {
   const [src, fb] = epArt(e);
-  return src ? imgTag(src, fb, "", "epthumb") : '<span class="epthumb"></span>';
+  return src ? imgTag(src, fb, "", "epthumb", false, THUMB)
+             : '<span class="epthumb"></span>';
 }
 function art(p) {
-  const inner = p[3] ? imgTag(p[3], null, p[1]) : letterTile(p[1]);
+  // covers are usually embedded, so there is nothing to defer: load them now
+  const inner = p[3] ? imgTag(p[3], null, p[1], "", true, TILE) : letterTile(p[1]);
   return '<div class="art">' + inner + (p[4] ? LOCK : "") + "</div>";
 }
 
@@ -547,7 +553,8 @@ function heroTile(eid, i) {
   if (!e) return "";
   const show = famTitle.get(e[0]) || "";
   const [src, fb] = epArt(e);
-  const inner = src ? imgTag(src, fb, show, "", true) : letterTile(show);
+  const inner = src ? imgTag(src, fb, show, "", true, i ? TILE : HERO)
+                    : letterTile(show);
   return '<a class="hero" href="#/p/' + e[0] + '">' + inner +
     '<div class="ov"><div class="et">' + esc(e[1]) + "</div>" +
     '<div class="es">' + esc(show) + " \\u00B7 " + fmtAgo(e[5]) + "</div></div></a>";

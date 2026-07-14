@@ -36,13 +36,17 @@ from pathlib import Path
 HERE = Path(__file__).parent
 PORT = 8574
 ART = HERE / "art_cache"
-ART_MAX = 640          # ample for the viewer's largest tile on a retina screen
+# Serve each image at the size it is actually drawn at (2x for retina), not one
+# big size for everything: a 640px image in a 190px tile is ~4x the bytes and
+# decode it needs, and on a wall of 150 that is what still stutters.
+THUMB, TILE, HERO = 96, 384, 768
+SIZES = (THUMB, TILE, HERO)
 UA = "agnostic-podcast-app/1.0 (+local viewer)"
 YEAR = "public, max-age=31536000, immutable"
 
 
-def shrink(body, ctype):
-    """Downscale to ART_MAX so the browser decodes a tile, not a poster.
+def shrink(body, ctype, px):
+    """Downscale so the browser decodes a tile, not a poster.
     Needs `sips` (macOS); anywhere else the original is cached untouched."""
     if not shutil.which("sips"):
         return body, ctype
@@ -51,7 +55,7 @@ def shrink(body, ctype):
             src, out = Path(td) / "in", Path(td) / "out.jpg"
             src.write_bytes(body)
             r = subprocess.run(
-                ["sips", "-Z", str(ART_MAX), "-s", "format", "jpeg",
+                ["sips", "-Z", str(px), "-s", "format", "jpeg",
                  "-s", "formatOptions", "78", str(src), "--out", str(out)],
                 capture_output=True)
             if r.returncode == 0 and out.exists() and out.stat().st_size:
@@ -61,16 +65,17 @@ def shrink(body, ctype):
     return body, ctype
 
 
-def cache_art(url):
-    """Fetch + shrink + store once. Returns (bytes, content-type)."""
-    key = ART / hashlib.sha256(url.encode()).hexdigest()[:20]
+def cache_art(url, px=TILE):
+    """Fetch + shrink + store once, per size. Returns (bytes, content-type)."""
+    px = px if px in SIZES else TILE          # fixed sizes: don't let the cache sprawl
+    key = ART / f"{hashlib.sha256(url.encode()).hexdigest()[:20]}_{px}"
     meta = key.with_suffix(".type")
     if key.exists() and key.stat().st_size:
         return key.read_bytes(), (meta.read_text() if meta.exists() else "image/jpeg")
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=25) as r:
         body, ctype = r.read(), r.headers.get("Content-Type", "image/jpeg")
-    body, ctype = shrink(body, ctype)
+    body, ctype = shrink(body, ctype, px)
     ART.mkdir(exist_ok=True)
     key.write_bytes(body)
     meta.write_text(ctype)
@@ -94,8 +99,8 @@ def prewarm(index_html):
         return
     done = 0
     print(f"warming art cache: {len(urls)} images...", flush=True)
-    with ThreadPoolExecutor(8) as ex:
-        for _ in ex.map(lambda u: _quiet(cache_art, u), urls):
+    with ThreadPoolExecutor(8) as ex:   # TILE: the size the scrolling wall asks for
+        for _ in ex.map(lambda u: _quiet(cache_art, u, TILE), urls):
             done += 1
     print(f"art cache warm ({done} images)", flush=True)
 
@@ -117,12 +122,16 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def artcache(self):
-        url = urllib.parse.parse_qs(
-            urllib.parse.urlparse(self.path).query).get("u", [""])[0]
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        url = q.get("u", [""])[0]
         if not url.startswith(("http://", "https://")):
             return self.send_error(400, "artcache takes an http(s) url")
         try:
-            body, ctype = cache_art(url)
+            px = int(q.get("w", [TILE])[0])
+        except ValueError:
+            px = TILE
+        try:
+            body, ctype = cache_art(url, px)
         except Exception as exc:   # the page falls back to the show's cover
             return self.send_error(502, f"artcache fetch failed: {exc}")
         self.send_response(200)
