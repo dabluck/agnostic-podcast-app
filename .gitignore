@@ -11,8 +11,9 @@ manual_links.json
 public_counterparts.json
 feed_replacements.json
 
-# Rebuildable feed cache (public RSS responses)
+# Rebuildable caches (public RSS responses; artwork the viewer hotlinks)
 feed_cache/
+art_cache/
 
 # Generated artifacts
 library.sqlite
