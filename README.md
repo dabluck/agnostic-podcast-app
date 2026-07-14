@@ -69,6 +69,28 @@ python3 audit_dedup.py       # human-review report of dedup quality
 python3 -m unittest tests_identity   # run the tests
 ```
 
+## The viewer
+
+`viewer.py` reads the warehouse read-only and writes **one** static
+`app/index.html` — data inlined as JSON, no build step, no network, no external
+assets. Three views: a recent-listening mosaic with a monthly listening chart, a
+filterable podcast grid with per-show detail, and a sortable episode table. Every
+episode shows which apps knew it, so a row heard in two apps is visibly one row.
+
+The browsing unit is the **family**, not the feed: a show's variants (private
+feeds, moved URLs) appear once, flagged with a lock and a feed count.
+
+Two `podcasts` columns are *enrichment hooks* the shipped ingesters leave unset,
+because no app export carries them — fill them in from the RSS feed (or any
+source you like) and the viewer uses them:
+
+- `image_url` / `episodes.image_url` — cover art. An `http` URL is hotlinked; a
+  `data:` URI is embedded, which keeps the page a single self-contained file.
+  Unset, a show renders as a lettered tile.
+- `category` / `subcategory` — drives the two-level category filter.
+
+A library with no dated plays still renders; it just has no chart.
+
 ## Adding another app
 
 The ingesters are just reference adapters. A new one only has to, for each

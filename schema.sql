@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
     website_url       TEXT,
     image_url         TEXT,                -- artwork; enrichment hook, unset by the shipped pipeline
     category          TEXT,                -- primary itunes category; enrichment hook, unset by default
+    subcategory       TEXT,                -- nested itunes category; enrichment hook, unset by default
     is_private        INTEGER NOT NULL DEFAULT 0,  -- tokenized/subscriber feed
     -- private/duplicate variants stay separate rows but point at their public
     -- counterpart here; NULL = this row is itself the public/primary feed
