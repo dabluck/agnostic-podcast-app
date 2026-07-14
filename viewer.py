@@ -224,9 +224,12 @@ nav.links a.on { color: var(--fg); border-bottom: 2px solid var(--accent); font-
 nav.links a:hover { color: var(--fg); }
 .homeblock { margin-bottom: 18px; }
 
+/* Cover art is square. The lead tile spans 2x2 so it stays square too — a
+   wider hero would crop the top and bottom off every cover. */
 .mosaic { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 190px; gap: 14px; }
-.mosaic .hero:first-child { grid-column: span 3; grid-row: span 2; }
-.mosaic .hero:first-child .et { font-size: 22px; }
+.mosaic .hero:first-child { grid-column: span 2; grid-row: span 2; }
+.mosaic .hero:first-child .et { font-size: 18px; }
+.mosaic .hero:first-child .es { font-size: 13px; }
 .hero { position: relative; border-radius: 14px; overflow: hidden; background: var(--pill);
   box-shadow: 0 2px 10px var(--shadow); cursor: pointer; transition: transform .18s ease; }
 .hero:hover { transform: scale(1.015); }
@@ -513,12 +516,12 @@ function heroTile(eid) {
     '<div class="ov"><div class="et">' + esc(e[1]) + "</div>" +
     '<div class="es">' + esc(show) + " \\u00B7 " + fmtAgo(e[5]) + "</div></div></a>";
 }
-// The mosaic is a fixed 6-column grid and the lead tile takes 6 cells (3x2), so
-// a count renders even rows when (count + 5) % 6 == 0. Round the initial batch up
-// and the final total down so the wall never ends ragged.
-const MCOLS = 6;
-const evenUp = n => { while ((n + MCOLS - 1) % MCOLS) n++; return n; };
-const evenDown = n => { while (n > 1 && (n + MCOLS - 1) % MCOLS) n--; return n; };
+// The mosaic is a fixed 6-column grid and the lead tile takes 4 cells (2x2), so
+// it displaces 3 ordinary tiles: a count renders even rows when (n + 3) % 6 == 0.
+// Round the initial batch up and the final total down so the wall never ends ragged.
+const MCOLS = 6, HERO_EXTRA = 3;
+const evenUp = n => { while ((n + HERO_EXTRA) % MCOLS) n++; return n; };
+const evenDown = n => { while (n > 1 && (n + HERO_EXTRA) % MCOLS) n--; return n; };
 const RECENT_INIT = evenUp(150);
 const RECENT_PAGE = 300;
 function viewRecent() {
