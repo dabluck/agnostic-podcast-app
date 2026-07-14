@@ -24,7 +24,7 @@ reaches 92% of its duration, 'partial' when there is any listening evidence
 is queueing/starring. Private-feed episodes are skipped and counted — they
 are pending the user's manual feed mapping.
 
-Idempotent. Run after the pocketcasts and aurelian ingesters.
+Idempotent. Order among ingesters doesn't matter (they upsert by public identity).
 """
 
 import json
@@ -42,7 +42,7 @@ from identity import core_url, iso_any, iso_from_epoch as iso_s
 
 
 def dur_sec(d):
-    """The bulk endpoint returns duration as {'seconds': N}."""
+    """Some metadata caches store duration as {'seconds': N}; unwrap it."""
     if isinstance(d, dict):
         return d.get("seconds")
     return d
@@ -60,14 +60,12 @@ def main():
         return
     b = json.load(open(backup))
 
-    feed_by_pod, private_pods = {}, set()
+    feed_by_pod = {}
     pod_titles = _load_json(CACHE / "pod_titles.json", {})
     if (CACHE / "podcasts.jsonl").exists():
         for line in open(CACHE / "podcasts.jsonl"):
             p = json.loads(line)
-            if p.get("private"):
-                private_pods.add(p["public_id"])
-            elif p.get("feed_url"):
+            if not p.get("private") and p.get("feed_url"):
                 feed_by_pod[p["public_id"]] = p["feed_url"]
                 if p.get("resolved_public_id"):
                     feed_by_pod[p["resolved_public_id"]] = p["feed_url"]
@@ -75,7 +73,7 @@ def main():
                     pod_titles.setdefault(p["public_id"], p["title"])
     feed_titles = {pid: t for pid, t in _load_json(CACHE / "feed_titles.json", {}).items() if t}
 
-    # user-supplied private feeds (Rails console dump) — same identity rules
+    # user-supplied private feeds (optional dump) — same identity rules
     private_feed_pods = set()
     pp_path = CACHE / "private_podcasts.json"
     if pp_path.exists():
@@ -97,7 +95,7 @@ def main():
                 continue
             e = json.loads(line)
             guid = e.get("feed_guid")
-            if isinstance(guid, dict):  # Rails dump wraps guids as {"str": ...}
+            if isinstance(guid, dict):  # some dumps wrap guids as {"str": ...}
                 guid = guid.get("str")
             ep_meta.setdefault(e["public_id"], {
                 "requested_id": e["public_id"], "public_id": e["public_id"],

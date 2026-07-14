@@ -3,8 +3,8 @@
   - public_counterparts.json: public podcast rows for shows the apps only
     know via private feeds, so linking can anchor variants to them.
   - feed_replacements.json: successor feed URLs for shows whose original
-    feed died and moved (verified by episode overlap; see
-    dead_feeds_review.md). Registered as role='replacement' aliases.
+    feed died and moved (verified by episode overlap). Registered as
+    role='replacement' aliases.
 Run before link_feed_variants.py. Idempotent."""
 import json
 import sqlite3

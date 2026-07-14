@@ -15,12 +15,12 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS podcasts (
     id                INTEGER PRIMARY KEY,
     feed_url          TEXT UNIQUE,         -- best current feed URL (see podcast_feed_urls for all)
-    podcast_guid      TEXT,                -- <podcast:guid> when the feed declares one
+    podcast_guid      TEXT,                -- <podcast:guid>; enrichment hook, no shipped ingester sets it yet
     title             TEXT NOT NULL,
     author            TEXT,
     website_url       TEXT,
-    image_url         TEXT,
-    category          TEXT,                -- primary itunes category
+    image_url         TEXT,                -- artwork; enrichment hook, unset by the shipped pipeline
+    category          TEXT,                -- primary itunes category; enrichment hook, unset by default
     is_private        INTEGER NOT NULL DEFAULT 0,  -- tokenized/subscriber feed
     -- private/duplicate variants stay separate rows but point at their public
     -- counterpart here; NULL = this row is itself the public/primary feed
@@ -115,6 +115,24 @@ CREATE TABLE IF NOT EXISTS app_stats (
     PRIMARY KEY (app, key, as_of)
 );
 
+-- Individual listening sessions (e.g. Castro playSessions): wall-clock span plus
+-- which slice of the episode audio was consumed. listened_sec is the audio
+-- consumed (to - from), distinct from wall clock (ended - began).
+CREATE TABLE IF NOT EXISTS listen_sessions (
+    id           INTEGER PRIMARY KEY,
+    app          TEXT NOT NULL,
+    external_id  TEXT UNIQUE,             -- the app's session id
+    episode_id   INTEGER NOT NULL REFERENCES episodes(id),
+    began_at     TEXT NOT NULL,           -- ISO8601 UTC
+    ended_at     TEXT,
+    from_sec     REAL,                    -- position where playback started
+    to_sec       REAL,                    -- position where playback stopped
+    listened_sec REAL,                    -- audio consumed
+    trimmed_sec  REAL,                    -- silence-trim savings
+    source       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ls_episode ON listen_sessions(episode_id, began_at);
+
 -- Feed-family lens: group a show's variants (private feeds, duplicate URLs)
 -- under one family_id for combined queries, without merging the rows.
 DROP VIEW IF EXISTS podcast_families;
@@ -161,21 +179,3 @@ FROM episodes e
 JOIN podcasts p ON p.id = e.podcast_id
 LEFT JOIN app_episode_state s ON s.episode_id = e.id
 GROUP BY e.id;
-
--- Individual listening sessions (Castro playSessions): wall-clock span plus
--- which slice of the episode audio was consumed. listened_sec is the audio
--- consumed (to - from), distinct from wall clock (ended - began).
-CREATE TABLE IF NOT EXISTS listen_sessions (
-    id           INTEGER PRIMARY KEY,
-    app          TEXT NOT NULL,
-    external_id  TEXT UNIQUE,             -- the app's session id
-    episode_id   INTEGER NOT NULL REFERENCES episodes(id),
-    began_at     TEXT NOT NULL,           -- ISO8601 UTC
-    ended_at     TEXT,
-    from_sec     REAL,                    -- position where playback started
-    to_sec       REAL,                    -- position where playback stopped
-    listened_sec REAL,                    -- audio consumed
-    trimmed_sec  REAL,                    -- silence-trim savings
-    source       TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_ls_episode ON listen_sessions(episode_id, began_at);
