@@ -11,11 +11,12 @@ podcast grid (+ per-show detail), and a sortable episode table. Light/dark/auto
 theme. Chart color validated with the dataviz palette checker: light #4a6bdc,
 dark #6784ea.
 
-Artwork comes from podcasts.image_url / episodes.image_url — an enrichment hook
-the shipped ingesters leave unset, so out of the box every show renders as a
-lettered tile. Fill it in and art appears: an http URL is hotlinked (and falls
-back to the lettered tile if it 404s), while a data: URI is embedded, which
-keeps the page a single file that needs no network at all.
+Artwork comes from podcasts.image_url / episodes.image_url — enrichment hooks the
+shipped ingesters leave unset, so out of the box every show renders as a lettered
+tile. Fill them in and art appears. An http URL is hotlinked; a data: URI is
+embedded. Art degrades down a chain — episode art, then the show's cover, then a
+lettered tile — so embedding just the covers (there are far fewer of them) leaves
+a page that still renders fully with no network, and sharpens when it has one.
 
 Degrades cleanly on a sparse library: no dated plays just means no spark chart.
 
@@ -224,12 +225,13 @@ nav.links a.on { color: var(--fg); border-bottom: 2px solid var(--accent); font-
 nav.links a:hover { color: var(--fg); }
 .homeblock { margin-bottom: 18px; }
 
-/* Cover art is square. The lead tile spans 2x2 so it stays square too — a
-   wider hero would crop the top and bottom off every cover. */
+/* Cover art is square, so the lead tile spans an equal 3x3 — big, and with the
+   whole cover intact. An unequal span (3x2) crops the top and bottom off every
+   cover, which eats the title on text-heavy art. */
 .mosaic { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 190px; gap: 14px; }
-.mosaic .hero:first-child { grid-column: span 2; grid-row: span 2; }
-.mosaic .hero:first-child .et { font-size: 18px; }
-.mosaic .hero:first-child .es { font-size: 13px; }
+.mosaic .hero:first-child { grid-column: span 3; grid-row: span 3; }
+.mosaic .hero:first-child .et { font-size: 24px; }
+.mosaic .hero:first-child .es { font-size: 14px; }
 .hero { position: relative; border-radius: 14px; overflow: hidden; background: var(--pill);
   box-shadow: 0 2px 10px var(--shadow); cursor: pointer; transition: transform .18s ease; }
 .hero:hover { transform: scale(1.015); }
@@ -392,21 +394,29 @@ function letterTile(title) {
   return '<div class="letter" style="background:' + bg + ";color:" + fg + '">'
        + esc((title || "?").replace(/^the /i, "").trim()[0] || "?").toUpperCase() + "</div>";
 }
+// Art degrades down a chain: episode art -> the show's cover -> a lettered tile.
+// Episode art is typically a remote URL while a cover may be embedded, so this is
+// also what keeps the page usable with no network.
 function imgFail(img) {
-  if (img.classList.contains("epthumb")) { img.style.visibility = "hidden"; }
+  if (img.dataset.fb) { img.src = img.dataset.fb; img.removeAttribute("data-fb"); }
+  else if (img.classList.contains("epthumb")) { img.style.visibility = "hidden"; }
   else { img.outerHTML = letterTile(img.dataset.t || "?"); }
 }
-function imgTag(src, title, cls) {
+function imgTag(src, fb, title, cls) {
   return '<img loading="lazy"' + (cls ? ' class="' + cls + '"' : "") +
-    ' src="' + esc(src) + '" alt="" data-t="' + esc(title).replace(/"/g, "&quot;") +
-    '" onerror="imgFail(this)">';
+    ' src="' + esc(src) + '" alt=""' + (fb ? ' data-fb="' + esc(fb) + '"' : "") +
+    ' data-t="' + esc(title).replace(/"/g, "&quot;") + '" onerror="imgFail(this)">';
+}
+function epArt(e) {
+  const cover = famArt.get(e[0]);
+  return e[7] ? [e[7], cover] : [cover, null];   // [src, fallback]
 }
 function epThumb(e) {
-  const src = e[7] || famArt.get(e[0]);   // episode art, else the show's cover
-  return src ? imgTag(src, "", "epthumb") : '<span class="epthumb"></span>';
+  const [src, fb] = epArt(e);
+  return src ? imgTag(src, fb, "", "epthumb") : '<span class="epthumb"></span>';
 }
 function art(p) {
-  const inner = p[3] ? imgTag(p[3], p[1]) : letterTile(p[1]);
+  const inner = p[3] ? imgTag(p[3], null, p[1]) : letterTile(p[1]);
   return '<div class="art">' + inner + (p[4] ? LOCK : "") + "</div>";
 }
 
@@ -510,16 +520,16 @@ function heroTile(eid) {
   const e = byEid.get(eid);
   if (!e) return "";
   const show = famTitle.get(e[0]) || "";
-  const src = e[7] || famArt.get(e[0]);
-  const inner = src ? imgTag(src, show) : letterTile(show);
+  const [src, fb] = epArt(e);
+  const inner = src ? imgTag(src, fb, show) : letterTile(show);
   return '<a class="hero" href="#/p/' + e[0] + '">' + inner +
     '<div class="ov"><div class="et">' + esc(e[1]) + "</div>" +
     '<div class="es">' + esc(show) + " \\u00B7 " + fmtAgo(e[5]) + "</div></div></a>";
 }
-// The mosaic is a fixed 6-column grid and the lead tile takes 4 cells (2x2), so
-// it displaces 3 ordinary tiles: a count renders even rows when (n + 3) % 6 == 0.
+// The mosaic is a fixed 6-column grid and the lead tile takes 9 cells (3x3), so
+// it displaces 8 ordinary tiles: a count renders even rows when (n + 8) % 6 == 0.
 // Round the initial batch up and the final total down so the wall never ends ragged.
-const MCOLS = 6, HERO_EXTRA = 3;
+const MCOLS = 6, HERO_EXTRA = 8;
 const evenUp = n => { while ((n + HERO_EXTRA) % MCOLS) n++; return n; };
 const evenDown = n => { while (n > 1 && (n + HERO_EXTRA) % MCOLS) n--; return n; };
 const RECENT_INIT = evenUp(150);
